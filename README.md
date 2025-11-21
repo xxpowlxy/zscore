@@ -1,4 +1,5 @@
-🧪 PoC: Modell-Evaluierung zur Verbrauchsvalidierung
+__PoC: Modell-Evaluierung zur Verbrauchsvalidierung__
+
 Dieses Repository dient als Proof of Concept (PoC), um verschiedene statistische Modelle zur Anomalie-Erkennung in Verbrauchsdaten zu evaluieren und vergleichen.
 
 Der Fokus liegt auf der Optimierung von Z-Score-Varianten (Standard, Kreuzvalidiert, Robust/MAD-basiert) und der Ermittlung ihrer idealen Parametereinstellungen für unseren Anwendungsfall.
