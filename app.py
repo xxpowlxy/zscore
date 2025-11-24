@@ -6,6 +6,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
+# Authentication
+from auth import check_password
+
 # models import
 from typing import List, Dict
 from models.classic_zscore import classic_zscore, konfidenzintervall
@@ -432,6 +435,11 @@ def zeige_ergebnisse(
 
 def main():
     setup_page()                                 # layout page
+
+    # Authentifizierung prüfen
+    if not check_password():
+        st.stop()  # Stoppe die App wenn nicht eingeloggt
+
     einstellungen = sidebar_controls()           # einstellungen
     metadaten = input_meta()                     # metadaten eingabe
     modus = verbrauch_modus()
