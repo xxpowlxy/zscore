@@ -125,8 +125,8 @@ def input_meta() -> dict:
 
     with col2:
         geraete_nr = st.text_input(                         # erwartet string input
-            "Geräte-Nr:",
-            placeholder="28890929"
+            "Referenz-Nr.:",
+            placeholder="z.B. Geräte-Nr."
         )
 
     with col3:
