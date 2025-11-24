@@ -36,7 +36,7 @@ def plot_anomalie_erkennung(
         daten: DataFrame mit Spalten 'Datum' und 'Verbrauch'
         ergebnisse: Dictionary aus den Analyse-Funktionen (classic_zscore, etc.)
         methode: String zur Identifikation der Methode
-                 ("classic", "leave_one_out", "mad")
+                 ("classic", "loo", "mad")
 
     Returns:
         matplotlib Figure Objekt
@@ -54,8 +54,20 @@ def plot_anomalie_erkennung(
     # Extrahiere Daten
     datum = daten['Datum'].values
     verbrauch = daten['Verbrauch'].values
-    anomalien = ergebnisse['anomalien']
-    z_scores = ergebnisse['z_score']
+
+    # LOO hat eine andere Struktur - nur ein Wert wird geprüft
+    if methode == "loo":
+        # LOO: Erstelle anomalien-Liste (nur letzter Wert kann Anomalie sein)
+        anomalien = [False] * len(verbrauch)
+        anomalien[ergebnisse['letzter_index']] = ergebnisse['ist_anomalie']
+
+        # LOO: Erstelle z_scores-Liste (nur letzter Wert hat Z-Score)
+        z_scores = [0.0] * len(verbrauch)
+        z_scores[ergebnisse['letzter_index']] = ergebnisse['z_score']
+    else:
+        # Classic: Alle Werte haben Z-Scores
+        anomalien = ergebnisse['anomalien']
+        z_scores = ergebnisse['z_score']
 
     # Konvertiere Datum zu datetime falls nötig
     if not isinstance(datum[0], (datetime, pd.Timestamp)):
@@ -113,6 +125,22 @@ def plot_anomalie_erkennung(
     # === ANOMALIEN HERVORHEBEN ===
     # Finde Anomalie-Positionen
     anomalie_indizes = [i for i, ist_anomalie in enumerate(anomalien) if ist_anomalie]
+
+    # Spezielle Markierung für LOO (geprüfter Wert)
+    if methode == "loo":
+        letzter_idx = ergebnisse['letzter_index']
+        # Markiere den geprüften Wert (letzter Wert) mit grünem Rahmen
+        ax.scatter(
+            [datum[letzter_idx]],
+            [verbrauch[letzter_idx]],
+            color='none',
+            s=300,
+            zorder=4,
+            marker='o',
+            edgecolors='green',
+            linewidths=3,
+            label='Geprüfter Wert (LOO)'
+        )
 
     if anomalie_indizes:
         # Extrahiere Daten für Anomalien
@@ -193,8 +221,18 @@ def erstelle_statistik_tabelle(daten: pd.DataFrame, ergebnisse: Dict) -> pd.Data
     # Extrahiere Daten
     datum = daten['Datum'].values
     verbrauch = daten['Verbrauch'].values
-    z_scores = ergebnisse['z_score']
-    anomalien = ergebnisse['anomalien']
+
+    # Prüfe ob LOO-Methode
+    if 'letzter_index' in ergebnisse:
+        # LOO: Erstelle Z-Score und Anomalien-Listen
+        z_scores = [0.0] * len(verbrauch)
+        z_scores[ergebnisse['letzter_index']] = ergebnisse['z_score']
+        anomalien = [False] * len(verbrauch)
+        anomalien[ergebnisse['letzter_index']] = ergebnisse['ist_anomalie']
+    else:
+        # Classic: Normale Listen
+        z_scores = ergebnisse['z_score']
+        anomalien = ergebnisse['anomalien']
 
     # Bestimme Baseline für Prozentberechnung
     if 'median' in ergebnisse:
@@ -238,8 +276,16 @@ def erstelle_zusammenfassung(ergebnisse: Dict, anzahl_datenpunkte: int) -> str:
     Diese Zusammenfassung kann in Streamlit als Info-Box angezeigt werden.
     """
     methode = ergebnisse.get('methode', 'Unbekannt')
-    anzahl_anomalien = len(ergebnisse['anomalien_indizes'])
-    prozent_anomalien = (anzahl_anomalien / anzahl_datenpunkte) * 100
+
+    # LOO hat eine andere Struktur
+    if 'letzter_index' in ergebnisse:
+        # LOO: Nur ein Wert wird geprüft
+        anzahl_anomalien = 1 if ergebnisse['ist_anomalie'] else 0
+        prozent_anomalien = (anzahl_anomalien / anzahl_datenpunkte) * 100
+    else:
+        # Classic: Alle Werte werden geprüft
+        anzahl_anomalien = len(ergebnisse['anomalien_indizes'])
+        prozent_anomalien = (anzahl_anomalien / anzahl_datenpunkte) * 100
 
     # Bestimme Statistiken je nach Methode
     if 'median' in ergebnisse:
@@ -270,12 +316,20 @@ def erstelle_zusammenfassung(ergebnisse: Dict, anzahl_datenpunkte: int) -> str:
 
     # Füge Anomalie-Details hinzu wenn vorhanden
     if anzahl_anomalien > 0:
-        anomalie_indizes = ergebnisse['anomalien_indizes']
-        anomalie_z_scores = [ergebnisse['z_score'][i] for i in anomalie_indizes]
+        # LOO: Nur ein Wert (der letzte)
+        if 'letzter_index' in ergebnisse:
+            idx = ergebnisse['letzter_index']
+            z = ergebnisse['z_score']
+            zusammenfassung += f"\n**Anomalie-Details:**\n"
+            zusammenfassung += f"- Position {idx + 1} (letzter Wert): Z-Score = {z:.2f}\n"
+        else:
+            # Classic: Mehrere Werte möglich
+            anomalie_indizes = ergebnisse['anomalien_indizes']
+            anomalie_z_scores = [ergebnisse['z_score'][i] for i in anomalie_indizes]
 
-        zusammenfassung += f"\n**Anomalie-Details:**\n"
-        for idx, z in zip(anomalie_indizes, anomalie_z_scores):
-            zusammenfassung += f"- Position {idx + 1}: Z-Score = {z:.2f}\n"
+            zusammenfassung += f"\n**Anomalie-Details:**\n"
+            for idx, z in zip(anomalie_indizes, anomalie_z_scores):
+                zusammenfassung += f"- Position {idx + 1}: Z-Score = {z:.2f}\n"
     else:
         zusammenfassung += "\n✅ Keine Anomalien gefunden.\n"
 
@@ -451,8 +505,17 @@ def erstelle_fehlerreport(
     report += "| # | Datum | Verbrauch | Z-Score | Anomalie |\n"
     report += "|---|-------|-----------|---------|----------|\n"
 
-    z_scores = ergebnisse.get('z_score', [])
-    anomalien = ergebnisse.get('anomalien', [])
+    # Prüfe ob LOO-Methode (z_score ist dann ein einzelner Float)
+    if 'letzter_index' in ergebnisse:
+        # LOO: Erstelle Z-Score und Anomalien-Listen
+        z_scores = [0.0] * len(daten)
+        z_scores[ergebnisse['letzter_index']] = ergebnisse['z_score']
+        anomalien = [False] * len(daten)
+        anomalien[ergebnisse['letzter_index']] = ergebnisse['ist_anomalie']
+    else:
+        # Classic: Normale Listen
+        z_scores = ergebnisse.get('z_score', [])
+        anomalien = ergebnisse.get('anomalien', [])
 
     for idx, row in daten.iterrows():
         datum_str = row['Datum'].strftime('%d.%m.%Y')

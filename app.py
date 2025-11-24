@@ -9,6 +9,7 @@ import numpy as np
 # models import
 from typing import List, Dict
 from models.classic_zscore import classic_zscore, konfidenzintervall
+from models.loo_zscore import loo_zscore, konfidenzintervall_loo
 
 # utils von CLAUDE geschrieben
 from utils.data_processing import (
@@ -28,6 +29,7 @@ from utils.visualization import (
 
 # config
 DEFAULT_THRESHOLD_CLASSIC = 1.5
+DEFAULT_THRESHOLD_LOO = 2.0
 MIN_DATENPUNKTE = 5
 MAX_DATENPUNKTE = 20
 DEFAULT_HISTORIE = 12
@@ -37,6 +39,7 @@ GERAETE_TYPEN = ['EHKV', 'WMZ', 'KWZ', 'WWZ', 'STR']
 
 # methoden-namen-mapping
 METHODE_CLASSIC = "Klassischer Z-Score"
+METHODE_LOO = "Leave-One-Out Z-Score"
 
 def setup_page():
     """ Konfigurieren der Streamlit-Start Seite mit Titel und Layout """
@@ -64,7 +67,7 @@ def sidebar_controls():
         st.subheader("mathematisches Modell")
         methode = st.radio(
         "Wählen Sie eine Modell:",
-        [METHODE_CLASSIC],                                  # TODO: "leave one out zscore" implemintieren
+        [METHODE_CLASSIC, METHODE_LOO],
         )
 
         st.divider()
@@ -74,15 +77,24 @@ def sidebar_controls():
         if methode == METHODE_CLASSIC:
             default_threshold = DEFAULT_THRESHOLD_CLASSIC
             threshold_range = (1.0, 4.0)                    # min und max für den slider
-        # else:
+        elif methode == METHODE_LOO:
+            default_threshold = DEFAULT_THRESHOLD_LOO
+            threshold_range = (1.5, 4.0)
+        else:
+            default_threshold = 2.0
+            threshold_range = (1.0, 4.0)
 
         threshold = st.slider(
             "Z-Score",
-            min_value=threshold_range[0],                   # 0 Index -> 1.5
-            max_value = threshold_range[1],                 # 1 Index -> 4.0
+            min_value=threshold_range[0],
+            max_value = threshold_range[1],
             value=default_threshold,
             step=0.1,                                       # steps für den slider
         )
+
+        # Info-Box für LOO-Methode
+        if methode == METHODE_LOO:
+            st.info("💡 Der **letzte** Zählerstand wird gegen alle vorherigen geprüft.")
 
         st.divider()
 
@@ -166,18 +178,23 @@ def verbrauch_modus() -> str:
 
     return "kumulierend" if ist_kumulierend else "reset"          # kumulierender zählerst. neu - zählerst. alt = verbrauch
 
-def input_data(anzahl_historie: int, modus: str) -> tuple:                                                
+def input_data(anzahl_historie: int, modus: str, methode: str = None) -> tuple:
     """
     Erstellt eine dynamische Tabelle zur Dateneingabe.
 
     Args:
         anzahl_zeilen: Anzahl der Zeilen in der Tabelle
         modus: "zaehlerstand" oder "verbrauch"
+        methode: Analysemethode (für Highlighting bei LOO)
 
     Returns:
         Tuple (datum_liste, wert_liste, reset_liste)
     """
     st.subheader("Daten Eingabe")
+
+    # Hinweis für LOO-Methode
+    # if methode == METHODE_LOO:
+        # st.info("🎯 Bei **Leave-One-Out** wird die **letzte Zeile** (unterste) gegen alle anderen geprüft.")
 
     if 'tabellen_daten' not in st.session_state:            # cookies
         st.session_state.tabellen_daten = []
@@ -207,9 +224,16 @@ def input_data(anzahl_historie: int, modus: str) -> tuple:
 
     # zeilen
     for i in range (anzahl_historie):
+        # Highlight für letzte Zeile bei LOO
+        ist_letzte_zeile = (i == anzahl_historie - 1)
+        if methode == METHODE_LOO and ist_letzte_zeile:
+            # Grüner Container für die zu prüfende Zeile
+            st.markdown("---")
+            st.markdown("**Zu prüfende Zeile (Leave-One-Out):**")
+
         if modus == "kumulierend":
             cols = st.columns([2, 2, 1])                    # relativen breiten 2:2:1
-            
+
             # datum
             datum_wert = cols[0].date_input(
                 f"Datum {i+1}",
@@ -261,6 +285,9 @@ def input_data(anzahl_historie: int, modus: str) -> tuple:
                 label_visibility="collapsed"
             )
 
+        if methode == METHODE_LOO and ist_letzte_zeile:
+            st.markdown("---")
+
         if datum_wert is not None:
             datum_liste.append(datum_wert)
             wert_liste.append(wert)
@@ -285,11 +312,11 @@ def valid_meta(metadaten: dict) -> tuple:
 
     return True, ""
 
-def analyse(                                                
+def analyse(
         daten: pd.DataFrame,                                # type hint pandas dataframe
-        methode: str, 
+        methode: str,
         threshold: float
-)-> dict: 
+)-> dict:
     """
     Führt die gewählte Analyse-Methode durch.
 
@@ -302,12 +329,15 @@ def analyse(
         Dictionary mit Analyse-Ergebnissen
     """
 
-    # extrahiere verbrauchswerte 
+    # extrahiere verbrauchswerte
     verbrauch_liste = daten['Verbrauch'].tolist()
 
     if methode == METHODE_CLASSIC:
         ergebniss = classic_zscore(verbrauch_liste, threshold)
-    # TODO: "leave one out zscore" implemintieren
+    elif methode == METHODE_LOO:
+        ergebniss = loo_zscore(verbrauch_liste, threshold)
+    else:
+        raise ValueError(f"Unbekannte Methode: {methode}")
 
     return ergebniss
 
@@ -333,6 +363,14 @@ def zeige_ergebnisse(
         modus: "kumulierend" oder "reset"
     """
     st.success("Analyse erfolgreich durchgeführt!")
+
+    # Spezielle Anzeige für LOO-Methode
+    if methode == METHODE_LOO:
+        # st.info(f"🎯 **Geprüfter Wert:** Letzter Zählerstand (Position {ergebniss['letzter_index'] + 1})")
+        if ergebniss['ist_anomalie']:
+            st.warning(f"⚠️ Der letzte Verbrauchswert ({ergebniss['letzter_wert']:.2f}) wurde als **Anomalie** erkannt!")
+        else:
+            st.success(f"✅ Der letzte Verbrauchswert ({ergebniss['letzter_wert']:.2f}) liegt im **Normalbereich**")
 
     zusammenfassung = erstelle_zusammenfassung(ergebniss, len(daten))
     st.markdown(zusammenfassung)
@@ -360,7 +398,10 @@ def zeige_ergebnisse(
 
         if methode == METHODE_CLASSIC:
             methode_key = "classic"
-        # TODO: "leave one out zscore" implemintieren
+        elif methode == METHODE_LOO:
+            methode_key = "loo"
+        else:
+            methode_key = "unknown"
 
         try:
             fig = plot_anomalie_erkennung(daten, ergebniss, methode_key)
@@ -397,9 +438,10 @@ def main():
 
     # return von input_data() in main() funktion übernehmen
     datum_liste, wert_liste, tausch_liste = input_data(
-    einstellungen['anzahl_historie'],
-    modus
-)
+        einstellungen['anzahl_historie'],
+        modus,
+        einstellungen['methode']  # Methode für LOO-Highlighting
+    )
 
     col1, col2, col3 = st.columns([1, 1, 1])
 
@@ -449,8 +491,8 @@ def main():
                 )
         else:
             daten = konvertiere_zu_dataframe(
-                wert_liste,
-                datum_liste,
+                datum_liste,  # Datum zuerst!
+                wert_liste,   # Dann Werte
                 'Verbrauch'
             )
     
