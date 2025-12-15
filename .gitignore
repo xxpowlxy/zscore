@@ -1,2 +1,5 @@
 users.db
 .env
+main.go
+validation-service-architecture.html
+.DS_Store
