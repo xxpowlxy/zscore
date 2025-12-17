@@ -17,8 +17,6 @@ APP_USERNAME=dein_username
 APP_PASSWORD=dein_passwort
 ```
 
-**Wichtig:** Die `.env` Datei ist in `.gitignore` und wird nicht committet!
-
 ## 📊 Verfügbare Modelle
 
 - **Klassischer Z-Score**: Alle Werte werden für Mittelwert/Std verwendet
