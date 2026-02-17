@@ -6,8 +6,6 @@ Der Fokus liegt auf der Optimierung von Z-Score-Varianten (Standard, Kreuzvalidi
 
 Die Streamlit-Web-App dient dabei als visuelles Test-Interface, um eine fundierte Entscheidung für das optimale Modell treffen zu können.
 
-Das Ziel ist die Auswahl des bestgeeigneten Algorithmus für die spätere Implementierung als Microservice in der Produktionsumgebung.
-
 ## 🔐 Authentifizierung
 
 Die App ist durch ein einfaches Login-System geschützt. Die Credentials werden aus der `.env` Datei geladen:
