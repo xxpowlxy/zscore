@@ -4,7 +4,7 @@ Dieses Repository dient als Proof of Concept (PoC), um verschiedene statistische
 
 Der Fokus liegt auf der Optimierung von Z-Score-Varianten und der Ermittlung ihrer idealen Parametereinstellungen für unseren Anwendungsfall.
 
-Die Streamlit-Web-App dient dabei als visuelles Test-Interface für die Messdienst Abrechner, 
+Die Streamlit-Web-App dient dabei als visuelles Test-Interface für die Messdienst Mitarbeiter, 
 um bekannte Fälle zu testen und geeignete Parameter für das Modell festzulegen (treshhold).
 
 ## 🔐 Authentifizierung
